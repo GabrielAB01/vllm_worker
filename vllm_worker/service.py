@@ -6,7 +6,7 @@ import logging
 import multiprocessing as mp
 import threading
 import time
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from .config import GenerationParams, VLLMSettings
 from .inference import GenerationResult
@@ -62,7 +62,9 @@ class VLLMInferenceService:
         self.logger = logger or logging.getLogger("vllm_service")
         if not self.logger.handlers:
             handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter("[%(levelname)s] %(name)s: %(message)s"))
+            handler.setFormatter(
+                logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
+            )
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
 

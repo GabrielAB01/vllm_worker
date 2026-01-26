@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from .config import GenerationParams, VLLMSettings
 
@@ -71,7 +70,9 @@ class VLLMInferenceEngine:
         if not self.settings.vllm_api_url:
             raise ValueError("vllm_api_url must be provided for remote mode")
 
-        self.logger.info("Connecting to remote vLLM server at %s", self.settings.vllm_api_url)
+        self.logger.info(
+            "Connecting to remote vLLM server at %s", self.settings.vllm_api_url
+        )
         self.client = OpenAI(
             base_url=self.settings.vllm_api_url,
             api_key="EMPTY",
@@ -189,8 +190,12 @@ class VLLMInferenceEngine:
                 results.append(
                     GenerationResult(
                         text=choice.text,
-                        prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-                        completion_tokens=response.usage.completion_tokens if response.usage else 0,
+                        prompt_tokens=response.usage.prompt_tokens
+                        if response.usage
+                        else 0,
+                        completion_tokens=response.usage.completion_tokens
+                        if response.usage
+                        else 0,
                         finish_reason=choice.finish_reason or "stop",
                     )
                 )
@@ -238,7 +243,9 @@ class VLLMInferenceEngine:
         # Apply chat template to convert messages to prompts
         prompts = []
         for messages in conversations:
-            if self.tokenizer is not None and hasattr(self.tokenizer, "apply_chat_template"):
+            if self.tokenizer is not None and hasattr(
+                self.tokenizer, "apply_chat_template"
+            ):
                 prompt = self.tokenizer.apply_chat_template(
                     messages,
                     tokenize=False,
@@ -257,7 +264,9 @@ class VLLMInferenceEngine:
         params: GenerationParams,
     ) -> List[GenerationResult]:
         """Process chat via remote vLLM using OpenAI chat API."""
-        self.logger.info("Processing %d conversation(s) with remote vLLM", len(conversations))
+        self.logger.info(
+            "Processing %d conversation(s) with remote vLLM", len(conversations)
+        )
 
         merged = params.merge_with_defaults(self.settings)
         results: List[GenerationResult] = []
@@ -280,8 +289,12 @@ class VLLMInferenceEngine:
                 results.append(
                     GenerationResult(
                         text=choice.message.content or "",
-                        prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-                        completion_tokens=response.usage.completion_tokens if response.usage else 0,
+                        prompt_tokens=response.usage.prompt_tokens
+                        if response.usage
+                        else 0,
+                        completion_tokens=response.usage.completion_tokens
+                        if response.usage
+                        else 0,
                         finish_reason=choice.finish_reason or "stop",
                     )
                 )

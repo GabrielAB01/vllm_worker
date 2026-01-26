@@ -7,7 +7,7 @@ import multiprocessing as mp
 import time
 import traceback
 import uuid
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 
 from .config import GenerationParams, VLLMSettings
 from .inference import GenerationResult
@@ -40,7 +40,10 @@ def _worker_process_loop(
             try:
                 job = request_queue.get(timeout=1)
             except Exception:
-                if idle_ttl_seconds > 0 and (time.monotonic() - last_used) >= idle_ttl_seconds:
+                if (
+                    idle_ttl_seconds > 0
+                    and (time.monotonic() - last_used) >= idle_ttl_seconds
+                ):
                     logger.info(
                         "vLLM worker idle for %ds, shutting down.",
                         idle_ttl_seconds,
@@ -59,41 +62,57 @@ def _worker_process_loop(
                 if job_type == "generate":
                     prompts = job.get("prompts", [])
                     params_dict = job.get("params", {})
-                    params = GenerationParams(**params_dict) if params_dict else GenerationParams()
+                    params = (
+                        GenerationParams(**params_dict)
+                        if params_dict
+                        else GenerationParams()
+                    )
 
                     results = engine.generate_batch(prompts, params)
-                    response_queue.put({
-                        "job_id": job_id,
-                        "status": "ok",
-                        "results": [_result_to_dict(r) for r in results],
-                    })
+                    response_queue.put(
+                        {
+                            "job_id": job_id,
+                            "status": "ok",
+                            "results": [_result_to_dict(r) for r in results],
+                        }
+                    )
 
                 elif job_type == "chat":
                     conversations = job.get("conversations", [])
                     params_dict = job.get("params", {})
-                    params = GenerationParams(**params_dict) if params_dict else GenerationParams()
+                    params = (
+                        GenerationParams(**params_dict)
+                        if params_dict
+                        else GenerationParams()
+                    )
 
                     results = engine.chat_batch(conversations, params)
-                    response_queue.put({
-                        "job_id": job_id,
-                        "status": "ok",
-                        "results": [_result_to_dict(r) for r in results],
-                    })
+                    response_queue.put(
+                        {
+                            "job_id": job_id,
+                            "status": "ok",
+                            "results": [_result_to_dict(r) for r in results],
+                        }
+                    )
 
                 else:
-                    response_queue.put({
-                        "job_id": job_id,
-                        "status": "error",
-                        "message": f"Unknown job type: {job_type}",
-                    })
+                    response_queue.put(
+                        {
+                            "job_id": job_id,
+                            "status": "error",
+                            "message": f"Unknown job type: {job_type}",
+                        }
+                    )
 
             except Exception as exc:
-                response_queue.put({
-                    "job_id": job_id,
-                    "status": "error",
-                    "message": str(exc),
-                    "traceback": traceback.format_exc(),
-                })
+                response_queue.put(
+                    {
+                        "job_id": job_id,
+                        "status": "error",
+                        "message": str(exc),
+                        "traceback": traceback.format_exc(),
+                    }
+                )
 
             last_used = time.monotonic()
 
@@ -101,7 +120,11 @@ def _worker_process_loop(
         if engine is not None:
             try:
                 import torch
-                if torch.distributed.is_available() and torch.distributed.is_initialized():
+
+                if (
+                    torch.distributed.is_available()
+                    and torch.distributed.is_initialized()
+                ):
                     torch.distributed.destroy_process_group()
             except Exception:
                 pass
@@ -200,12 +223,14 @@ class VLLMWorkerPool:
             raise RuntimeError("vLLM worker is not available")
 
         job_id = uuid.uuid4().hex
-        self._request_queue.put({
-            "job_id": job_id,
-            "type": "generate",
-            "prompts": prompts,
-            "params": params.to_dict() if params else {},
-        })
+        self._request_queue.put(
+            {
+                "job_id": job_id,
+                "type": "generate",
+                "prompts": prompts,
+                "params": params.to_dict() if params else {},
+            }
+        )
 
         payload = self._response_queue.get()
         return self._process_response(job_id, payload)
@@ -224,12 +249,14 @@ class VLLMWorkerPool:
             raise RuntimeError("vLLM worker is not available")
 
         job_id = uuid.uuid4().hex
-        self._request_queue.put({
-            "job_id": job_id,
-            "type": "chat",
-            "conversations": conversations,
-            "params": params.to_dict() if params else {},
-        })
+        self._request_queue.put(
+            {
+                "job_id": job_id,
+                "type": "chat",
+                "conversations": conversations,
+                "params": params.to_dict() if params else {},
+            }
+        )
 
         payload = self._response_queue.get()
         return self._process_response(job_id, payload)

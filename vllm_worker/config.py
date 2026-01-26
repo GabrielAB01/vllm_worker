@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -88,7 +88,9 @@ class VLLMSettings:
             default_top_p=_read_float("VLLM_DEFAULT_TOP_P", 0.95),
             default_top_k=_read_int("VLLM_DEFAULT_TOP_K", -1),
             default_max_tokens=_read_int("VLLM_DEFAULT_MAX_TOKENS", 2048),
-            default_repetition_penalty=_read_float("VLLM_DEFAULT_REPETITION_PENALTY", 1.0),
+            default_repetition_penalty=_read_float(
+                "VLLM_DEFAULT_REPETITION_PENALTY", 1.0
+            ),
             vllm_mode=vllm_mode,
             vllm_api_url=vllm_api_url,
         )
