@@ -19,6 +19,7 @@ def _worker_process_loop(
     response_queue: mp.Queue,
     log_level: int,
     idle_ttl_seconds: int,
+    ready_event,
 ) -> None:
     """Main loop for the worker process."""
     logger = logging.getLogger("vllm_service.worker")
@@ -35,6 +36,9 @@ def _worker_process_loop(
         from .inference import VLLMInferenceEngine
 
         engine = VLLMInferenceEngine(settings=settings, logger=logger)
+
+        # Indicate that the worker is ready
+        ready_event.set()
 
         while True:
             try:
@@ -168,6 +172,7 @@ class VLLMWorkerPool:
         self._request_queue: Optional[mp.Queue] = None
         self._response_queue: Optional[mp.Queue] = None
         self._worker_process: Optional[mp.Process] = None
+        self._ready_event: Optional[object] = None
 
     def ensure_worker(self) -> None:
         """Ensure the worker process is running."""
@@ -177,6 +182,7 @@ class VLLMWorkerPool:
         self.logger.info("Starting vLLM worker process...")
         self._request_queue = self._mp_ctx.Queue()
         self._response_queue = self._mp_ctx.Queue()
+        self._ready_event = self._mp_ctx.Event()
         self._worker_process = self._mp_ctx.Process(
             target=_worker_process_loop,
             args=(
@@ -185,6 +191,7 @@ class VLLMWorkerPool:
                 self._response_queue,
                 self.logger.getEffectiveLevel(),
                 self._idle_ttl_seconds,
+                self._ready_event,
             ),
             daemon=False,
         )
@@ -205,8 +212,21 @@ class VLLMWorkerPool:
             self._worker_process.terminate()
             self._worker_process.join(timeout=5)
 
-    def is_alive(self) -> bool:
-        """Check if the worker process is running."""
+    def warmup(self) -> None:
+        """Ensure the worker process is running to preload the model."""
+        self.ensure_worker()
+
+    def is_ready(self) -> bool:
+        """Check if worker is running AND model is loaded."""
+        return (
+            self._worker_process is not None
+            and self._worker_process.is_alive()
+            and self._ready_event is not None
+            and self._ready_event.is_set()
+        )
+
+    def is_running(self) -> bool:
+        """Check if worker process is running (may not be ready yet)."""
         return self._worker_process is not None and self._worker_process.is_alive()
 
     def generate_batch(

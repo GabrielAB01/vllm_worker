@@ -61,22 +61,18 @@ class VLLMInferenceService:
 
         self.logger = logger or logging.getLogger("vllm_service")
         if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setFormatter(
-                logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
-            )
-            self.logger.addHandler(handler)
-            self.logger.setLevel(logging.INFO)
+            self.logger.addHandler(logging.NullHandler())
 
         self._mp_ctx = mp.get_context("spawn")
         self._worker_lock = threading.Lock()
         self._last_used = 0.0
+        self._idle_ttl_seconds = self.settings.idle_ttl_seconds
 
         self._worker_pool = VLLMWorkerPool(
             settings=self.settings,
             logger=self.logger,
             mp_ctx=self._mp_ctx,
-            idle_ttl_seconds=self.settings.idle_ttl_seconds,
+            idle_ttl_seconds=self._idle_ttl_seconds,
         )
 
     def _update_last_used(self) -> None:
@@ -101,7 +97,15 @@ class VLLMInferenceService:
 
     def is_ready(self) -> bool:
         """Check if the worker is running and ready."""
-        return self._worker_pool.is_alive()
+        return self._worker_pool.is_ready()
+
+    def get_status(self) -> dict:
+        """Return worker readiness and TTL information."""
+        return {
+            "worker_running": self._worker_pool.is_running(),
+            "worker_ready": self._worker_pool.is_ready(),
+            "idle_ttl_seconds": self._idle_ttl_seconds,
+        }
 
     def generate(
         self,
