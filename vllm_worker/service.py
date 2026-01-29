@@ -100,12 +100,8 @@ class VLLMInferenceService:
         return self._worker_pool.is_ready()
 
     def get_status(self) -> dict:
-        """Return worker readiness and TTL information."""
-        return {
-            "worker_running": self._worker_pool.is_running(),
-            "worker_ready": self._worker_pool.is_ready(),
-            "idle_ttl_seconds": self._idle_ttl_seconds,
-        }
+        """Return worker readiness, TTL, and error information if any."""
+        return self._worker_pool.get_status()
 
     def generate(
         self,

@@ -17,6 +17,7 @@ def _worker_process_loop(
     settings: VLLMSettings,
     request_queue: mp.Queue,
     response_queue: mp.Queue,
+    error_queue: mp.Queue,
     log_level: int,
     idle_ttl_seconds: int,
     ready_event,
@@ -120,6 +121,17 @@ def _worker_process_loop(
 
             last_used = time.monotonic()
 
+    except Exception as startup_error:
+        # Capture startup errors and send to parent process
+        error_msg = f"Worker startup failed: {startup_error}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        try:
+            error_queue.put({"error": str(startup_error), "traceback": traceback.format_exc()})
+        except Exception:
+            pass  # Queue might be closed
+        raise
+
     finally:
         if engine is not None:
             try:
@@ -171,8 +183,10 @@ class VLLMWorkerPool:
         self._idle_ttl_seconds = idle_ttl_seconds
         self._request_queue: Optional[mp.Queue] = None
         self._response_queue: Optional[mp.Queue] = None
+        self._error_queue: Optional[mp.Queue] = None
         self._worker_process: Optional[mp.Process] = None
         self._ready_event: Optional[object] = None
+        self._startup_error: Optional[str] = None
 
     def ensure_worker(self) -> None:
         """Ensure the worker process is running."""
@@ -182,13 +196,16 @@ class VLLMWorkerPool:
         self.logger.info("Starting vLLM worker process...")
         self._request_queue = self._mp_ctx.Queue()
         self._response_queue = self._mp_ctx.Queue()
+        self._error_queue = self._mp_ctx.Queue()
         self._ready_event = self._mp_ctx.Event()
+        self._startup_error = None  # Reset error on new worker start
         self._worker_process = self._mp_ctx.Process(
             target=_worker_process_loop,
             args=(
                 self.settings,
                 self._request_queue,
                 self._response_queue,
+                self._error_queue,
                 self.logger.getEffectiveLevel(),
                 self._idle_ttl_seconds,
                 self._ready_event,
@@ -218,6 +235,9 @@ class VLLMWorkerPool:
 
     def is_ready(self) -> bool:
         """Check if worker is running AND model is loaded."""
+        # Check for startup errors
+        self._check_startup_error()
+
         return (
             self._worker_process is not None
             and self._worker_process.is_alive()
@@ -228,6 +248,39 @@ class VLLMWorkerPool:
     def is_running(self) -> bool:
         """Check if worker process is running (may not be ready yet)."""
         return self._worker_process is not None and self._worker_process.is_alive()
+
+    def _check_startup_error(self) -> None:
+        """Check if worker reported a startup error."""
+        if self._error_queue is None:
+            return
+
+        try:
+            # Non-blocking check for errors
+            while not self._error_queue.empty():
+                error_data = self._error_queue.get_nowait()
+                self._startup_error = error_data.get("error", "Unknown startup error")
+                self.logger.error(f"Worker startup error captured: {self._startup_error}")
+        except Exception:
+            pass
+
+    def get_status(self) -> dict:
+        """Get worker status including any errors.
+
+        Returns:
+            Dict with worker_running, worker_ready, idle_ttl_seconds, and error if any
+        """
+        self._check_startup_error()
+
+        status = {
+            "worker_running": self.is_running(),
+            "worker_ready": self.is_ready(),
+            "idle_ttl_seconds": self._idle_ttl_seconds,
+        }
+
+        if self._startup_error:
+            status["error"] = self._startup_error
+
+        return status
 
     def generate_batch(
         self,
