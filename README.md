@@ -4,9 +4,23 @@ Lightweight Python service for vLLM with a persistent worker and automatic VRAM 
 
 ## Environment variables
 
+### Model
+
 ```bash
 export VLLM_MODEL_PATH=/path/to/model    # Required
+
+# VRAM configuration (local mode)
+# Choose ONE of the following:
+# - VLLM_KV_CACHE_MEMORY_BYTES: an absolute KV-cache budget
+# - VLLM_GPU_MEMORY_UTILIZATION: fraction of GPU memory to use (fallback)
+
+# Option A (recommended): absolute KV-cache budget
+# Accepts bytes (e.g. 4294967296) or human-friendly sizes like "12GiB" / "12GB" / "12G"
+export VLLM_KV_CACHE_MEMORY_BYTES=12G  # Optional
+
+# Option B: GPU utilization fraction
 export VLLM_GPU_MEMORY_UTILIZATION=0.9   # Optional (default: 0.9)
+
 export VLLM_MAX_MODEL_LEN=32768          # Optional (default: 32768)
 export VLLM_IDLE_TTL_SECONDS=1800        # Optional (default: 1800)
 export VLLM_DEFAULT_TEMPERATURE=0.7      # Optional (default: 0.7)
@@ -16,6 +30,10 @@ export VLLM_DEFAULT_MAX_TOKENS=2048      # Optional (default: 2048)
 export VLLM_MODE=remote
 export VLLM_API_URL=http://localhost:8000/v1
 ```
+
+Notes:
+- If `VLLM_KV_CACHE_MEMORY_BYTES` is set, it takes precedence over `VLLM_GPU_MEMORY_UTILIZATION`.
+- `VLLM_KV_CACHE_MEMORY_BYTES` only affects **local** vLLM initialization; in `VLLM_MODE=remote` the worker connects to an external server.
 
 ## Usage
 

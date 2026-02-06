@@ -52,14 +52,25 @@ class VLLMInferenceEngine:
         from vllm import LLM
 
         self.logger.info("Loading local vLLM engine from %s", self.settings.model_path)
-        self.llm = LLM(
-            model=str(self.settings.model_path),
-            trust_remote_code=self.settings.trust_remote_code,
-            dtype=self.settings.dtype,
-            gpu_memory_utilization=self.settings.gpu_memory_utilization,
-            max_model_len=self.settings.max_model_len,
-            tensor_parallel_size=self.settings.tensor_parallel_size,
-        )
+
+        # Build LLM kwargs based on which VRAM configuration is provided
+        llm_kwargs = {
+            "model": str(self.settings.model_path),
+            "trust_remote_code": self.settings.trust_remote_code,
+            "dtype": self.settings.dtype,
+            "max_model_len": self.settings.max_model_len,
+            "tensor_parallel_size": self.settings.tensor_parallel_size,
+        }
+
+        # kv_cache_memory_bytes and gpu_memory_utilization are mutually exclusive
+        if self.settings.kv_cache_memory_bytes is not None:
+            llm_kwargs["kv_cache_memory_bytes"] = self.settings.kv_cache_memory_bytes
+            self.logger.info("Using kv_cache_memory_bytes: %d bytes", self.settings.kv_cache_memory_bytes)
+        else:
+            llm_kwargs["gpu_memory_utilization"] = self.settings.gpu_memory_utilization
+            self.logger.info("Using gpu_memory_utilization: %.2f", self.settings.gpu_memory_utilization)
+
+        self.llm = LLM(**llm_kwargs)
         self.tokenizer = self.llm.get_tokenizer()
         self.logger.info("Local vLLM engine ready")
 

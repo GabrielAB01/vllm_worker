@@ -35,12 +35,61 @@ def _read_bool(env_key: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_memory_size(value: str) -> int:
+    """Parse memory size from human-readable format to bytes.
+
+    Args:
+        value: Memory size string (e.g., '4G', '12.3GiB', '8GB', or raw bytes as string)
+
+    Returns:
+        Memory size in bytes
+
+    Raises:
+        ValueError: If the format is invalid
+
+    Note:
+        - G or GiB: binary gigabytes (1024^3 bytes)
+        - GB: decimal gigabytes (1000^3 bytes)
+    """
+    value = value.strip()
+    value_upper = value.upper()
+
+    # Check for GiB (binary gigabytes)
+    if value_upper.endswith("GIB") or value_upper.endswith("G"):
+        try:
+            gb_value = float(value[:-3])
+            return int(gb_value * 1024 * 1024 * 1024)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid memory size format: {value}. Expected format like '4GiB' or '12.3G'"
+            ) from exc
+
+    # Check for GB (decimal gigabytes)
+    if value_upper.endswith("GB"):
+        try:
+            gb_value = float(value[:-2])
+            return int(gb_value * 1000 * 1000 * 1000)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid memory size format: {value}. Expected format like '4GB' or '12.3GB'"
+            ) from exc
+
+    # Otherwise, treat as raw bytes
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid memory size: {value}. Expected integer bytes or format like '4G', '4GiB', or '4GB'"
+        ) from exc
+
+
 @dataclass(frozen=True, slots=True)
 class VLLMSettings:
     """Configuration for the vLLM inference service."""
 
     model_path: Path
     gpu_memory_utilization: float = 0.9
+    kv_cache_memory_bytes: Optional[int] = None
     max_model_len: int = 32768
     tensor_parallel_size: int = 1
     dtype: str = "auto"
@@ -76,9 +125,23 @@ class VLLMSettings:
         if vllm_mode == "remote" and not vllm_api_url:
             raise ValueError("VLLM_API_URL must be set when VLLM_MODE is 'remote'")
 
+        # Handle VRAM configuration: either gpu_memory_utilization or kv_cache_memory_bytes
+        kv_cache_bytes_env = os.getenv("VLLM_KV_CACHE_MEMORY_BYTES")
+        if kv_cache_bytes_env:
+            try:
+                kv_cache_memory_bytes = _parse_memory_size(kv_cache_bytes_env)
+            except ValueError as exc:
+                raise ValueError(f"Invalid VLLM_KV_CACHE_MEMORY_BYTES: {exc}") from exc
+        else:
+            kv_cache_memory_bytes = None
+
+        # If kv_cache_memory_bytes is not set, use gpu_memory_utilization
+        gpu_memory_utilization = _read_float("VLLM_GPU_MEMORY_UTILIZATION", 0.9)
+
         return cls(
             model_path=model_path,
-            gpu_memory_utilization=_read_float("VLLM_GPU_MEMORY_UTILIZATION", 0.9),
+            gpu_memory_utilization=gpu_memory_utilization,
+            kv_cache_memory_bytes=kv_cache_memory_bytes,
             max_model_len=_read_int("VLLM_MAX_MODEL_LEN", 32768),
             tensor_parallel_size=_read_int("VLLM_TENSOR_PARALLEL_SIZE", 1),
             dtype=os.getenv("VLLM_DTYPE", "auto"),
